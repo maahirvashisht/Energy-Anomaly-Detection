@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Energy Consumption Anomaly Detection - Dashboard</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --ink: #1d2530; --muted: #6b7684; --line: #e3e7ec;
+    --load: #2b3a4a; --cal: #e08a00; --wx: #1f7fb6; --anom: #d1364b; --ok: #2f9e6b;
+    --stl: #2e86ab; --fc: #f18f01; --if: #5f9a3e; --ae: #7b2cbf; --dq: #8d99ae;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         background: var(--bg); color: var(--ink); font-size: 14px; }
+  header { padding: 18px 28px 6px; }
+  h1 { margin: 0; font-size: 21px; letter-spacing: -0.2px; }
+  .sub { color: var(--muted); margin-top: 3px; font-size: 13px; }
+  main { padding: 10px 28px 28px; display: grid; gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
+             margin: 0 0 10px; font-weight: 600; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .kpi .v { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+  .kpi .l { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .kpi .d { font-size: 12.5px; margin-top: 6px; }
+  .up { color: var(--ok); font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .controls .grp { display: flex; gap: 6px; align-items: center; margin-right: 10px; }
+  .controls label.t { color: var(--muted); font-size: 12px; margin-right: 2px; }
+  button, select, input[type=date] { font: inherit; font-size: 13px; border: 1px solid var(--line);
+    background: #fff; border-radius: 7px; padding: 5px 10px; cursor: pointer; color: var(--ink); }
+  button:hover { border-color: #b9c2cc; }
+  button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  button.play { background: var(--anom); color: #fff; border-color: var(--anom); min-width: 92px; font-weight: 600; }
+  .seg button { border-radius: 0; margin-left: -1px; }
+  .seg button:first-child { border-radius: 7px 0 0 7px; }
+  .seg button:last-child { border-radius: 0 7px 7px 0; }
+  .chk { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; margin-right: 6px; cursor: pointer; }
+  .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .row { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr); gap: 14px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  #chartWrap { position: relative; }
+  canvas { display: block; width: 100%; }
+  #tip { position: absolute; pointer-events: none; background: rgba(29,37,48,.94); color: #fff;
+         padding: 8px 10px; border-radius: 7px; font-size: 12px; line-height: 1.5; display: none;
+         white-space: nowrap; z-index: 5; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .ln { width: 18px; height: 0; border-top: 2px solid; display: inline-block; }
+  .dash { border-top-style: dashed; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: var(--anom); }
+  .note { font-size: 12px; color: var(--muted); margin-top: 6px; min-height: 16px; }
+  /* live panel */
+  .clock { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .now { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+  .now div { background: var(--bg); border-radius: 7px; padding: 7px 9px; }
+  .now b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .now small { color: var(--muted); font-size: 11.5px; }
+  .votes { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .vote { font-size: 11.5px; padding: 3px 7px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
+  .vote.hit { color: #fff; border-color: transparent; }
+  .status { padding: 7px 10px; border-radius: 7px; font-weight: 600; font-size: 13px; text-align: center; margin-bottom: 10px; }
+  .status.ok { background: #e7f5ee; color: var(--ok); }
+  .status.bad { background: #fde8eb; color: var(--anom); animation: pulse .9s ease-in-out 2; }
+  @keyframes pulse { 50% { transform: scale(1.03); } }
+  #feed { max-height: 250px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+  .alert { border-left: 3px solid var(--anom); background: #fff6f7; padding: 6px 8px; border-radius: 0 6px 6px 0;
+           font-size: 12px; line-height: 1.45; cursor: pointer; }
+  .alert .t { font-weight: 600; }
+  .empty { color: var(--muted); font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 5px 6px; text-align: right; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; }
+  tr.click { cursor: pointer; }
+  tr.click:hover td { background: #f3f6f9; }
+  tr.best td { font-weight: 700; }
+  .heat { border-radius: 4px; padding: 2px 6px; display: inline-block; min-width: 38px; text-align: center; }
+  footer { color: var(--muted); font-size: 11.5px; padding: 0 28px 24px; }
+  @media (max-width: 1100px) { .row, .row2 { grid-template-columns: 1fr; } .kpis { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Energy Consumption Anomaly Detection</h1>
+  <div class="sub">PJM East hourly electricity load, 2002-2018 · ensemble of STL, gradient-boosting forecast,
+    Isolation Forest and autoencoder, plus data-quality rules</div>
+</header>
+<main>
+  <section class="kpis">
+    <div class="card kpi"><div class="v" id="k1"></div><div class="l">hours of load data analysed</div>
+      <div class="d" id="k1d"></div></div>
+    <div class="card kpi"><div class="v" id="k2"></div><div class="l">hours flagged as anomalous</div>
+      <div class="d" id="k2d"></div></div>
+    <div class="card kpi"><div class="v" id="k3"></div><div class="l">F1 on injected test anomalies (weather-aware)</div>
+      <div class="d" id="k3d"></div></div>
+    <div class="card kpi"><div class="v" id="k4"></div><div class="l">injected events caught (weather-aware)</div>
+      <div class="d" id="k4d"></div></div>
+  </section>
+
+  <section class="card">
+    <div class="controls">
+      <div class="grp"><label class="t">Jump to</label><span id="evBtns"></span></div>
+      <div class="grp"><label class="t">Date</label><input type="date" id="dateIn"></div>
+      <div class="grp"><label class="t">Window</label>
+        <span class="seg" id="winSeg"></span></div>
+      <div class="grp"><label class="t">Model</label>
+        <span class="seg"><button id="mCal" class="on">Calendar</button><button id="mWx">Weather-aware</button></span></div>
+      <div class="grp"><button id="prev">&#9664;</button><button id="next">&#9654;</button></div>
+    </div>
+    <div class="controls" style="margin-top:8px"><label class="t">Show detectors:</label><span id="detChk"></span></div>
+  </section>
+
+  <section class="row">
+    <div class="card">
+      <h2 id="chartTitle">Load and detected anomalies</h2>
+      <div id="chartWrap"><canvas id="chart" height="440"></canvas><div id="tip"></div></div>
+      <div class="legend">
+        <span><i class="ln" style="border-color:var(--load)"></i>Actual load</span>
+        <span><i class="ln dash" id="expSw" style="border-color:var(--cal)"></i><span id="expLbl">Expected (calendar model)</span></span>
+        <span><i class="dot"></i>Anomaly (final detector)</span>
+      </div>
+      <div class="note" id="note"></div>
+      <h2 style="margin-top:14px">Full history - click to jump</h2>
+      <canvas id="overview" height="90"></canvas>
+    </div>
+    <div class="card">
+      <h2>Live replay</h2>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+        <button class="play" id="playBtn">&#9654; Play</button>
+        <select id="speed">
+          <option value="3">3 h / sec</option>
+          <option value="8" selected>8 h / sec</option>
+          <option value="24">1 day / sec</option>
+          <option value="72">3 days / sec</option>
+        </select>
+        <button id="resetBtn">Restart</button>
+      </div>
+      <div class="note">Streams the data hour by hour, as a monitoring system would see it.</div>
+      <div class="clock" id="clock">-</div>
+      <div class="now">
+        <div><small>Actual load</small><b id="nLoad">-</b></div>
+        <div><small>Expected</small><b id="nExp">-</b></div>
+        <div><small>Deviation</small><b id="nDev">-</b></div>
+        <div><small>Temperature</small><b id="nTemp">-</b></div>
+      </div>
+      <div class="status ok" id="status">Waiting to start</div>
+      <div class="votes" id="votes"></div>
+      <h2>Alerts</h2>
+      <div id="feed"><div class="empty">No alerts yet. Press Play.</div></div>
+    </div>
+  </section>
+
+  <section class="row2">
+    <div class="card">
+      <h2>Top anomalous days (click to view)</h2>
+      <table id="topT"></table>
+    </div>
+    <div class="card">
+      <h2>Event recall by anomaly type (injection test)</h2>
+      <table id="typeT"></table>
+      <div class="note">50 synthetic anomalies (10 per type) injected into 2017; share caught by each method.</div>
+    </div>
+    <div class="card">
+      <h2>Does temperature help? (2012-2017)</h2>
+      <table id="wxT"></table>
+      <div class="note">Same pipeline; only the forecast model gets Philadelphia temperature.</div>
+    </div>
+  </section>
+</main>
+<footer>Data: PJM Interconnection hourly load (PJME), Kaggle "Hourly Energy Consumption";
+  temperature: Kaggle "Historical Hourly Weather Data" (OpenWeatherMap). Generated by src/build_dashboard.py.</footer>
+
+<script>
+const D = __DATA__;
+const H = 3600e3;
+const T0 = Date.parse(D.start + "Z");               // timestamps treated as UTC to avoid browser TZ shifts
+const BITS = {stl: 1, fc: 2, if: 4, ae: 8, dq: 16, final: 32};
+const DET = [["stl", "STL"], ["fc", "Forecast"], ["if", "Isolation Forest"], ["ae", "Autoencoder"], ["dq", "Rules"]];
+const COL = {stl: "#2e86ab", fc: "#f18f01", if: "#5f9a3e", ae: "#7b2cbf", dq: "#8d99ae"};
+const fmt = n => n.toLocaleString("en-US");
+const pad = n => String(n).padStart(2, "0");
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const tOf = i => new Date(T0 + i * H);
+const fmtT = i => { const d = tOf(i); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${pad(d.getUTCHours())}:00`; };
+const idxOf = ms => Math.round((ms - T0) / H);
+
+const state = {a: 0, len: 24 * 7, model: "cal", show: {stl: true, fc: true, if: true, ae: true, dq: true},
+               playing: false, cursor: null, timer: null, hover: null};
+
+// ---------- model accessors
+const wxRange = i => i >= D.wx.off && i < D.wx.off + D.wx.exp.length;
+function expAt(i) { return (state.model === "wx" && wxRange(i)) ? D.wx.exp[i - D.wx.off] : D.exp[i]; }
+function flAt(i)  { return (state.model === "wx" && wxRange(i)) ? D.wx.fl[i - D.wx.off] : D.fl[i]; }
+function tempAt(i) { return wxRange(i) ? D.wx.temp[i - D.wx.off] : null; }
+
+// ---------- KPIs
+(function kpis() {
+  const k = D.kpi;
+  document.getElementById("k1").textContent = fmt(k.hours);
+  document.getElementById("k1d").textContent = "16.6 years, Jan 2002 - Aug 2018";
+  document.getElementById("k2").textContent = fmt(k.final_flags);
+  document.getElementById("k2d").textContent = (100 * k.final_flags / k.hours).toFixed(2) + "% of all hours";
+  document.getElementById("k3").textContent = k.f1_wx.toFixed(2);
+  document.getElementById("k3d").innerHTML = `calendar-only ${k.f1_cal.toFixed(2)} &rarr; <span class="up">+${(k.f1_wx - k.f1_cal).toFixed(2)}</span>`;
+  document.getElementById("k4").textContent = Math.round(k.er_wx * 100) + "%";
+  document.getElementById("k4d").innerHTML = `calendar-only ${Math.round(k.er_cal * 100)}% &rarr; <span class="up">all 50 caught</span>`;
+})();
+
+// ---------- controls
+const evBtns = document.getElementById("evBtns");
+Object.entries(D.events).forEach(([name, day]) => {
+  const b = document.createElement("button"); b.textContent = name;
+  b.onclick = () => { stop(); state.a = idxOf(Date.parse(day + "T00:00:00Z")); state.len = 24 * 7; syncWin(); draw(); };
+  evBtns.appendChild(b);
+});
+const WINS = [[3, "3 d"], [7, "7 d"], [14, "14 d"], [30, "30 d"]];
+const winSeg = document.getElementById("winSeg");
+WINS.forEach(([d, l]) => { const b = document.createElement("button"); b.textContent = l; b.dataset.d = d;
+  b.onclick = () => { stop(); state.len = d * 24; syncWin(); draw(); }; winSeg.appendChild(b); });
+function syncWin() { [...winSeg.children].forEach(b => b.classList.toggle("on", +b.dataset.d * 24 === state.len)); clampA(); }
+function clampA() { state.a = Math.max(0, Math.min(D.n - state.len, state.a)); }
+document.getElementById("dateIn").onchange = e => { if (!e.target.value) return; stop();
+  state.a = idxOf(Date.parse(e.target.value + "T00:00:00Z")); clampA(); draw(); };
+document.getElementById("prev").onclick = () => { stop(); state.a -= Math.round(state.len / 2); clampA(); draw(); };
+document.getElementById("next").onclick = () => { stop(); state.a += Math.round(state.len / 2); clampA(); draw(); };
+const mCal = document.getElementById("mCal"), mWx = document.getElementById("mWx");
+mCal.onclick = () => { state.model = "cal"; mCal.classList.add("on"); mWx.classList.remove("on"); draw(); };
+mWx.onclick = () => { state.model = "wx"; mWx.classList.add("on"); mCal.classList.remove("on");
+  if (!wxRange(state.a + state.len - 1) && !wxRange(state.a)) { state.a = idxOf(Date.parse("2014-01-04T00:00:00Z")); }
+  draw(); };
+const detChk = document.getElementById("detChk");
+DET.forEach(([k, l]) => { const lab = document.createElement("label"); lab.className = "chk";
+  lab.innerHTML = `<input type="checkbox" checked><i class="sw" style="background:${COL[k]}"></i>${l}`;
+  lab.querySelector("input").onchange = e => { state.show[k] = e.target.checked; draw(); };
+  detChk.appendChild(lab); });
+
+// ---------- canvas helpers
+function setup(cv) {
+  const r = window.devicePixelRatio || 1, w = cv.clientWidth, h = +cv.getAttribute("height");
+  cv.width = w * r; cv.height = h * r; cv.style.height = h + "px";
+  const c = cv.getContext("2d"); c.setTransform(r, 0, 0, r, 0, 0); return [c, w, h];
+}
+
+// ---------- main chart
+const cv = document.getElementById("chart");
+const L = {left: 100, right: 14, top: 12, plotH: 270, laneTop: 300, laneH: 13, tempTop: 380, tempH: 46};
+function draw() {
+  const [c, W, Hh] = setup(cv);
+  const a = state.a, b = Math.min(D.n, a + state.len);
+  const end = state.playing || state.cursor !== null ? Math.min(b, (state.cursor ?? a) + 1) : b;
+  const x = i => L.left + (i - a) / (b - 1 - a) * (W - L.left - L.right);
+  // y scale over full window (stable while replaying)
+  let lo = Infinity, hi = -Infinity;
+  for (let i = a; i < b; i++) { const v = D.load[i], e = expAt(i); lo = Math.min(lo, v, e); hi = Math.max(hi, v, e); }
+  const padv = (hi - lo) * 0.08 + 200; lo -= padv; hi += padv;
+  const y = v => L.top + (1 - (v - lo) / (hi - lo)) * L.plotH;
+
+  c.font = "11px -apple-system, Segoe UI, sans-serif"; c.fillStyle = "#6b7684"; c.strokeStyle = "#e3e7ec"; c.lineWidth = 1;
+  // y grid
+  const step = niceStep((hi - lo) / 5);
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    c.beginPath(); c.moveTo(L.left, y(v)); c.lineTo(W - L.right, y(v)); c.stroke();
+    c.textAlign = "right"; c.fillText((v / 1000).toFixed(step < 1000 ? 1 : 0) + " GW", L.left - 6, y(v) + 4);
+  }
+  // x day ticks
+  c.textAlign = "center";
+  const dayEvery = state.len > 24 * 16 ? 3 : 1;
+  for (let i = a; i < b; i++) { const d = tOf(i);
+    if (d.getUTCHours() === 0 && (d.getUTCDate() % dayEvery === 0 || dayEvery === 1)) {
+      c.beginPath(); c.moveTo(x(i), L.top); c.lineTo(x(i), L.top + L.plotH); c.stroke();
+      c.fillText(`${d.getUTCDate()} ${MON[d.getUTCMonth()]}`, x(i), L.top + L.plotH + 13);
+    } }
+  // weather-unavailable shading
+  if (state.model === "wx") {
+    c.fillStyle = "rgba(140,150,160,0.10)";
+    for (let i = a; i < b; i++) if (!wxRange(i)) c.fillRect(x(i) - 0.5, L.top, Math.max(1, x(i + 1) - x(i)) + 1, L.plotH);
+  }
+  // expected line
+  c.setLineDash([5, 4]); c.strokeStyle = state.model === "wx" ? "#1f7fb6" : "#e08a00"; c.lineWidth = 1.4;
+  line(c, a, b, i => x(i), i => y(expAt(i)));
+  c.setLineDash([]);
+  // actual load (only up to cursor in replay)
+  c.strokeStyle = "#2b3a4a"; c.lineWidth = 1.8; line(c, a, end, i => x(i), i => y(D.load[i]));
+  // anomalies
+  c.fillStyle = "#d1364b";
+  for (let i = a; i < end; i++) if (flAt(i) & BITS.final) { c.beginPath(); c.arc(x(i), y(D.load[i]), 3.6, 0, 7); c.fill(); }
+  // detector lanes
+  c.textAlign = "right"; c.fillStyle = "#6b7684";
+  DET.forEach(([k, lab], r) => {
+    const ly = L.laneTop + r * L.laneH;
+    c.fillStyle = "#6b7684"; c.fillText(lab, L.left - 6, ly + 9);
+    c.fillStyle = "#f1f3f5"; c.fillRect(L.left, ly + 1, W - L.left - L.right, L.laneH - 3);
+    if (!state.show[k]) return;
+    c.fillStyle = COL[k];
+    const wpx = Math.max(1.5, (W - L.left - L.right) / state.len);
+    for (let i = a; i < end; i++) if (flAt(i) & BITS[k]) c.fillRect(x(i) - wpx / 2, ly + 1, wpx, L.laneH - 3);
+  });
+  // temperature strip
+  const ty0 = L.tempTop, tH = L.tempH;
+  c.fillStyle = "#6b7684"; c.fillText("Temp °C", L.left - 6, ty0 + tH / 2 + 4);
+  let tlo = Infinity, thi = -Infinity;
+  for (let i = a; i < b; i++) { const t = tempAt(i); if (t !== null) { tlo = Math.min(tlo, t); thi = Math.max(thi, t); } }
+  if (tlo < Infinity) {
+    if (thi - tlo < 4) { thi += 2; tlo -= 2; }
+    const ty = t => ty0 + (1 - (t - tlo) / (thi - tlo)) * tH;
+    c.strokeStyle = "#d1364b"; c.lineWidth = 1.2; c.beginPath(); let st = false;
+    for (let i = a; i < end; i++) { const t = tempAt(i); if (t === null) { st = false; continue; }
+      st ? c.lineTo(x(i), ty(t)) : c.moveTo(x(i), ty(t)); st = true; }
+    c.stroke();
+    c.textAlign = "left"; c.fillStyle = "#6b7684";
+    c.fillText(`${Math.round(thi)}°`, W - L.right - 26, ty0 + 9); c.fillText(`${Math.round(tlo)}°`, W - L.right - 26, ty0 + tH);
+  } else { c.textAlign = "left"; c.fillStyle = "#9aa4af"; c.fillText("no temperature data for this period (available Oct 2012 - Nov 2017)", L.left + 4, ty0 + tH / 2 + 4); }
+  // cursor + hover
+  if (state.cursor !== null) { c.strokeStyle = "#d1364b"; c.setLineDash([2, 3]); c.beginPath();
+    c.moveTo(x(state.cursor), L.top); c.lineTo(x(state.cursor), ty0 + tH); c.stroke(); c.setLineDash([]); }
+  if (state.hover !== null && state.hover >= a && state.hover < end) {
+    c.strokeStyle = "rgba(29,37,48,.35)"; c.beginPath(); c.moveTo(x(state.hover), L.top); c.lineTo(x(state.hover), ty0 + tH); c.stroke(); }
+
+  // titles / notes
+  document.getElementById("chartTitle").textContent = `Load and detected anomalies · ${fmtT(a)} to ${fmtT(b - 1)}`;
+  document.getElementById("expSw").style.borderColor = state.model === "wx" ? "#1f7fb6" : "#e08a00";
+  document.getElementById("expLbl").textContent = state.model === "wx" ? "Expected (calendar + temperature model)" : "Expected (calendar model)";
+  let nA = 0; for (let i = a; i < b; i++) if (flAt(i) & BITS.final) nA++;
+  const wxNote = state.model === "wx" && !(wxRange(a) && wxRange(b - 1)) ? " Grey area: no temperature data, calendar model shown there." : "";
+  document.getElementById("note").textContent = `${nA} anomalous hour${nA === 1 ? "" : "s"} in this window.` + wxNote;
+  document.getElementById("dateIn").value = tOf(a).toISOString().slice(0, 10);
+  drawOverview();
+  geom = {a, b, end, x, W};
+}
+let geom = null;
+function line(c, a, b, fx, fy) { c.beginPath(); for (let i = a; i < b; i++) i === a ? c.moveTo(fx(i), fy(i)) : c.lineTo(fx(i), fy(i)); c.stroke(); }
+function niceStep(s) { const p = Math.pow(10, Math.floor(Math.log10(s))); const m = s / p; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p; }
+
+// hover tooltip
+const tip = document.getElementById("tip");
+cv.addEventListener("mousemove", ev => {
+  if (!geom) return; const r = cv.getBoundingClientRect(), mx = ev.clientX - r.left;
+  const i = Math.round(geom.a + (mx - L.left) / (geom.W - L.left - L.right) * (geom.b - 1 - geom.a));
+  if (i < geom.a || i >= geom.end) { tip.style.display = "none"; state.hover = null; draw(); return; }
+  state.hover = i; draw();
+  const e = expAt(i), v = D.load[i], dev = (v - e) / e * 100, f = flAt(i), t = tempAt(i);
+  const fired = DET.filter(([k]) => f & BITS[k]).map(([, l]) => l);
+  tip.innerHTML = `<b>${fmtT(i)}</b><br>Load: ${fmt(v)} MW<br>Expected: ${fmt(e)} MW (${dev >= 0 ? "+" : ""}${dev.toFixed(1)}%)` +
+    (t !== null ? `<br>Temperature: ${t.toFixed(1)} °C` : "") +
+    `<br>${f & BITS.final ? '<span style="color:#ff8a98">&#9679; ANOMALY</span>' : "Normal"}` +
+    (fired.length ? `<br>Fired: ${fired.join(", ")}` : "");
+  tip.style.display = "block";
+  const tx = mx + 14 + 230 > r.width ? mx - 244 : mx + 14;
+  tip.style.left = tx + "px"; tip.style.top = (ev.clientY - r.top + 10) + "px";
+});
+cv.addEventListener("mouseleave", () => { tip.style.display = "none"; state.hover = null; draw(); });
+
+// ---------- overview
+const ov = document.getElementById("overview");
+const days = Math.ceil(D.n / 24), dMean = new Float32Array(days), dAn = new Uint8Array(days);
+for (let d = 0; d < days; d++) { let s = 0, k = 0;
+  for (let i = d * 24; i < Math.min(D.n, d * 24 + 24); i++) { s += D.load[i]; k++; if (D.fl[i] & BITS.final) dAn[d] = 1; }
+  dMean[d] = s / k; }
+let dLo = Infinity, dHi = -Infinity; dMean.forEach(v => { dLo = Math.min(dLo, v); dHi = Math.max(dHi, v); });
+function drawOverview() {
+  const [c, W, Hh] = setup(ov), l = 100, r = 14, top = 4, h = Hh - 26;
+  const x = d => l + d / (days - 1) * (W - l - r);
+  c.strokeStyle = "#9fb3c8"; c.lineWidth = 1; c.beginPath();
+  for (let d = 0; d < days; d++) { const yy = top + (1 - (dMean[d] - dLo) / (dHi - dLo)) * h; d ? c.lineTo(x(d), yy) : c.moveTo(x(d), yy); }
+  c.stroke();
+  c.fillStyle = "#d1364b";
+  for (let d = 0; d < days; d++) if (dAn[d]) c.fillRect(x(d) - 0.75, top + h + 2, 1.5, 7);
+  c.fillStyle = "#6b7684"; c.font = "11px -apple-system, Segoe UI, sans-serif"; c.textAlign = "center";
+  for (let yr = 2002; yr <= 2018; yr += 2) { const d = (Date.UTC(yr, 0, 1) - T0) / (24 * H); if (d >= 0) c.fillText(yr, x(d), Hh - 2); }
+  // weather coverage + window
+  const w0 = D.wx.off / 24, w1 = (D.wx.off + D.wx.exp.length) / 24;
+  c.fillStyle = "rgba(31,127,182,0.07)"; c.fillRect(x(w0), top, x(w1) - x(w0), h);
+  c.fillStyle = "rgba(209,54,75,0.18)"; c.strokeStyle = "#d1364b";
+  const s0 = x(state.a / 24), s1 = x((state.a + state.len) / 24);
+  c.fillRect(s0, top, Math.max(3, s1 - s0), h); c.strokeRect(s0, top, Math.max(3, s1 - s0), h);
+}
+ov.addEventListener("click", ev => { const r = ov.getBoundingClientRect(), l = 100, rr = 14;
+  const d = (ev.clientX - r.left - l) / (r.width - l - rr) * (days - 1);
+  stop(); state.a = Math.round(d * 24 - state.len / 2); clampA(); draw(); });
+
+// ---------- live replay
+const playBtn = document.getElementById("playBtn"), feed = document.getElementById("feed");
+const votesEl = document.getElementById("votes"), statusEl = document.getElementById("status");
+DET.forEach(([k, l]) => { const s = document.createElement("span"); s.className = "vote"; s.dataset.k = k; s.textContent = l; votesEl.appendChild(s); });
+playBtn.onclick = () => state.playing ? pause() : play();
+document.getElementById("resetBtn").onclick = () => { stop(); feed.innerHTML = '<div class="empty">No alerts yet. Press Play.</div>'; play(); };
+function play() {
+  if (state.cursor === null || state.cursor >= state.a + state.len - 1) { state.cursor = state.a; clearFeed(); }
+  state.playing = true; playBtn.innerHTML = "&#10074;&#10074; Pause";
+  const tick = () => {
+    const hps = +document.getElementById("speed").value;
+    const steps = Math.max(1, Math.round(hps / 30));
+    for (let s = 0; s < steps; s++) { if (!advance()) { pause(); break; } }
+    draw();
+  };
+  clearInterval(state.timer); state.timer = setInterval(tick, 1000 / Math.min(30, +document.getElementById("speed").value));
+}
+function advance() {
+  if (state.cursor >= Math.min(D.n, state.a + state.len) - 1) return false;
+  state.cursor++; showNow(state.cursor); return true;
+}
+function pause() { state.playing = false; clearInterval(state.timer); playBtn.innerHTML = "&#9654; Play"; }
+function stop() { pause(); state.cursor = null; statusEl.className = "status ok"; statusEl.textContent = "Waiting to start"; }
+function clearFeed() { feed.innerHTML = ""; feed.dataset.n = 0; }
+function showNow(i) {
+  const v = D.load[i], e = expAt(i), dev = (v - e) / e * 100, f = flAt(i), t = tempAt(i);
+  document.getElementById("clock").textContent = fmtT(i);
+  document.getElementById("nLoad").textContent = fmt(v) + " MW";
+  document.getElementById("nExp").textContent = fmt(e) + " MW";
+  const nd = document.getElementById("nDev"); nd.textContent = (dev >= 0 ? "+" : "") + dev.toFixed(1) + "%";
+  nd.style.color = Math.abs(dev) > 15 ? "#d1364b" : "";
+  document.getElementById("nTemp").textContent = t !== null ? t.toFixed(1) + " °C" : "n/a";
+  [...votesEl.children].forEach(s => { const hit = f & BITS[s.dataset.k]; s.classList.toggle("hit", !!hit);
+    s.style.background = hit ? COL[s.dataset.k] : ""; });
+  if (f & BITS.final) {
+    statusEl.className = "status bad"; statusEl.textContent = "ANOMALY DETECTED";
+    const fired = DET.filter(([k]) => f & BITS[k]).map(([, l]) => l);
+    const div = document.createElement("div"); div.className = "alert";
+    div.innerHTML = `<span class="t">${fmtT(i)}</span><br>${fmt(v)} MW vs expected ${fmt(e)} MW (${dev >= 0 ? "+" : ""}${dev.toFixed(1)}%)<br><span style="color:#6b7684">${fired.join(" · ") || "ensemble"}</span>`;
+    div.onclick = () => { pause(); state.hover = i; draw(); };
+    if (feed.querySelector(".empty")) feed.innerHTML = "";
+    feed.prepend(div); while (feed.children.length > 60) feed.lastChild.remove();
+  } else { statusEl.className = "status ok"; statusEl.textContent = "Normal"; }
+}
+
+// ---------- tables
+(function tables() {
+  const top = document.getElementById("topT");
+  top.innerHTML = "<tr><th>Date</th><th>Anom. hours</th><th>Mean MW</th><th>Min MW</th><th>Votes</th></tr>" +
+    D.top.slice(0, 12).map(r => `<tr class="click" data-d="${r[0]}"><td>${r[0]}</td><td>${r[1]}</td><td>${fmt(Math.round(r[2]))}</td><td>${fmt(Math.round(r[3]))}</td><td>${r[5]}</td></tr>`).join("");
+  [...top.querySelectorAll("tr.click")].forEach(tr => tr.onclick = () => { stop();
+    state.len = 24 * 7; syncWin(); state.a = idxOf(Date.parse(tr.dataset.d + "T00:00:00Z")) - 24 * 3; clampA(); draw();
+    window.scrollTo({top: 0, behavior: "smooth"}); });
+
+  const tt = document.getElementById("typeT");
+  const heat = v => `<span class="heat" style="background:rgba(47,158,107,${0.08 + v * 0.55});color:${v > 0.6 ? "#fff" : "#1d2530"}">${Math.round(v * 100)}%</span>`;
+  const short = {stl: "STL", fc: "Forecast", if: "Iso. Forest", ae: "Autoencoder", ens: "Ensemble", dq: "Rules", final: "Final"};
+  tt.innerHTML = "<tr><th>Method</th>" + D.types.map(t => `<th>${t.replace("_", " ")}</th>`).join("") + "</tr>" +
+    Object.entries(D.typeTable).map(([m, vals]) => `<tr class="${m === "final" ? "best" : ""}"><td>${short[m]}</td>${vals.map(v => `<td>${heat(v)}</td>`).join("")}</tr>`).join("");
+
+  const k = D.kpi, wt = document.getElementById("wxT");
+  const rows = [
+    ["Forecast error (MAPE)", k.mape_cal.toFixed(1) + "%", k.mape_wx.toFixed(1) + "%"],
+    ["Hours flagged (real data)", k.flags_cal, k.flags_wx],
+    ["...on extreme-temp days", k.ext_cal, k.ext_wx],
+    ["Precision (injection)", k.prec_cal.toFixed(2), k.prec_wx.toFixed(2)],
+    ["Recall (injection)", k.rec_cal.toFixed(2), k.rec_wx.toFixed(2)],
+    ["F1 (injection)", k.f1_cal.toFixed(2), k.f1_wx.toFixed(2)],
+    ["Events caught", Math.round(k.er_cal * 100) + "%", Math.round(k.er_wx * 100) + "%"],
+  ];
+  wt.innerHTML = "<tr><th></th><th>Calendar</th><th>+ Temperature</th></tr>" +
+    rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td><b>${r[2]}</b></td></tr>`).join("");
+})();
+
+// ---------- start on Hurricane Sandy
+state.a = idxOf(Date.parse(D.events["Hurricane Sandy"] + "T00:00:00Z")); syncWin(); draw();
+window.addEventListener("resize", draw);
+</script>
+</body>
+</html>
