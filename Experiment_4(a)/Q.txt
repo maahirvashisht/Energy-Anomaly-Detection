@@ -1,0 +1,7 @@
+# Analysis of proximity measures for various Attribute types
+#   -> Write a python script for (don't use pre built libraries):
+#         a) Nominal
+#         b) Binary (Symmetric and Asymmetric)
+#         c) Numerical (Manhatten and Euclidean)
+#         d) Ordinal
+#         e) Cosine similarity  measure analysis (pre built your own function)
